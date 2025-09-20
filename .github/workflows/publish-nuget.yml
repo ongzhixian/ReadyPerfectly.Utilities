@@ -24,6 +24,9 @@ jobs:
       - name: List files (for debugging)
         run: ls -R
 
+      - name: Get tag name
+        run: echo "The tag name is ${{ github.ref_name }}"
+
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.x'
@@ -32,11 +35,20 @@ jobs:
         run: dotnet restore
 
       - name: Build the project
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore -p:AssemblyVersion=${{ github.ref_name }} -p:Version="${{ github.ref_name }}" -p:FileVersion=${{ github.ref_name }}
 
-      - name: Get tag name
-        run: echo "The tag name is ${{ github.ref_name }}"
-        
+      - name: Build the project
+        run: dotnet pack --configuration Release --no-build --output ./dist -p:PackageVersion=${{ github.ref_name }}
+
+      - name: List files (for debugging)
+        run: ls -R
+
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: dist/
+
       # - name: Pack the NuGet package
       #   run: dotnet pack --configuration Release --no-build --output .
       # - name: Push to NuGet
