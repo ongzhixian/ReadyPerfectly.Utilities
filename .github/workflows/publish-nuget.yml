@@ -24,8 +24,9 @@ jobs:
       - name: List files (for debugging)
         run: ls -R
 
-      - name: Get tag name
-        run: echo "The tag name is ${{ github.ref_name }}"
+      - name: Define version
+        run: |
+          echo "The tag name is ${{ github.ref_name }}"
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -40,8 +41,8 @@ jobs:
       - name: Build the project
         run: dotnet pack --configuration Release --no-build --output ./dist -p:PackageVersion=${{ github.ref_name }}
 
-      - name: List files (for debugging)
-        run: ls -R
+      - name: Push to NuGet
+        run: dotnet nuget push "./dist/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
 
       - name: Store the distribution packages
         uses: actions/upload-artifact@v4
@@ -49,7 +50,5 @@ jobs:
           name: nuget-package
           path: dist/
 
-      # - name: Pack the NuGet package
-      #   run: dotnet pack --configuration Release --no-build --output .
-      # - name: Push to NuGet
-      #   run: dotnet nuget push "*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+      - name: List files (for debugging)
+        run: ls -R
