@@ -25,8 +25,23 @@ jobs:
         run: ls -R
 
       - name: Define version
+        id: version_definition
         run: |
           echo "The tag name is ${{ github.ref_name }}"
+          $regex = '^(?<majorVersion>\d+)(?:\.(?<minorVersion>\d+))?(?:\.(?<patchVersion>\d+))?(?:-(?<preReleaseTag>[a-zA-Z]+)(?:\.(?<preReleaseVersion>\d+))?)?$'
+          if ("${{ github.ref_name }}" -notmatch $regex) {
+            Write-Host "Tag ${{ github.ref_name }} does not match regex."
+            exit 1
+          }
+          $major = $matches.majorVersion
+          $minor = $matches.minorVersion ? $matches.minorVersion : 0
+          $patch = $matches.patchVersion ? $matches.patchVersion : 0
+          $ProductVersion = "${{ github.ref_name }}"
+          $AssemblyVersion = "$major.$minor.$patch"
+          # Write-Host "##[set-output name=AssemblyVersion;]$AssemblyVersion"
+          Write-Host "Product version is $ProductVersion, assembly version is $AssemblyVersion"
+          "product_version=$ProductVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
+          "assembly_version=$AssemblyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -36,13 +51,23 @@ jobs:
         run: dotnet restore
 
       - name: Build the project
-        run: dotnet build --configuration Release --no-restore -p:AssemblyVersion=${{ github.ref_name }} -p:Version="${{ github.ref_name }}" -p:FileVersion=${{ github.ref_name }}
+        run: |
+          $ProductVersion = "${{ steps.version_definition.outputs.product_version }}"
+          $AssemblyVersion = "${{ steps.version_definition.outputs.assembly_version }}"
+          Write-Host "FROM PREVIOUS STEP: Product version is $ProductVersion, assembly version is $AssemblyVersion"
+          dotnet build --configuration Release --no-restore -p:Version="$ProductVersion" -p:AssemblyVersion="$AssemblyVersion"
 
-      - name: Build the project
-        run: dotnet pack --configuration Release --no-build --output ./dist -p:PackageVersion=${{ github.ref_name }}
+      - name: Generate the nuget package
+        run: |
+          $ProductVersion = "${{ steps.version_definition.outputs.product_version }}"
+          $AssemblyVersion = "${{ steps.version_definition.outputs.assembly_version }}"
+          Write-Host "FROM PREVIOUS STEP: Product version is $ProductVersion, assembly version is $AssemblyVersion"
+          dotnet pack --configuration Release --no-build --output ./dist -p:PackageVersion="$ProductVersion"
 
       - name: Push to NuGet
-        run: dotnet nuget push "./dist/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+        if: vars.PUBLISH_TO_NUGET_ORG == 'true'
+        run: |
+          dotnet nuget push "./dist/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
 
       - name: Store the distribution packages
         uses: actions/upload-artifact@v4
