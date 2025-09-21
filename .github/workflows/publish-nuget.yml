@@ -11,6 +11,8 @@ on:
   #   branches: [ "main" ]
   workflow_dispatch:
 
+if: github.event_name == 'push' # Perform workflow ONLY if the main event that triggered it was a push event.
+
 jobs:
   build:
     name: Build and deploy to NuGet
@@ -36,8 +38,9 @@ jobs:
           $major = $matches.majorVersion
           $minor = $matches.minorVersion ? $matches.minorVersion : 0
           $patch = $matches.patchVersion ? $matches.patchVersion : 0
+          $buildConfiguration = 0
           $ProductVersion = "${{ github.ref_name }}"
-          $AssemblyVersion = "$major.$minor.$patch"
+          $AssemblyVersion = "$major.$minor.$buildConfiguration.$patch"
           # Write-Host "##[set-output name=AssemblyVersion;]$AssemblyVersion"
           Write-Host "Product version is $ProductVersion, assembly version is $AssemblyVersion"
           "product_version=$ProductVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding UTF8
