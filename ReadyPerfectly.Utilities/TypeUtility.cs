@@ -1,13 +1,41 @@
 ﻿using System.Reflection;
+
 using Microsoft.Extensions.Logging;
 
-// ReSharper disable once CheckNamespace
-#pragma warning disable IDE0130 // Namespace does not match folder structure
-namespace ReadyPerfectly.Extensions;
-#pragma warning restore IDE0130 // Namespace does not match folder structure
+namespace ReadyPerfectly.Utilities;
 
 public static class TypeUtility
 {
+    public static IEnumerable<TAttribute> GetTypesWithAttribute<TAttribute>() where TAttribute : Attribute
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type[] types;
+
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                types = ex.Types.Where(t => t is not null).Cast<Type>().ToArray();
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+
+            foreach (var type in types)
+            {
+                if (type is not { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false }) continue;
+                
+                var attribute = type.GetCustomAttribute<TAttribute>(inherit: true);
+                    
+                if (attribute is not null) yield return attribute;
+            }
+        }
+    }
+
     public static IEnumerable<Type> GetTypesImplementing<TInterface>(ILogger? logger = null) where TInterface : class
     {
         var targetType = typeof(TInterface);
@@ -34,7 +62,7 @@ public static class TypeUtility
                 continue;
             }
 
-            foreach (var type in types) 
+            foreach (var type in types)
                 if (IsConcreteImplementation(type)) yield return type;
         }
 
@@ -43,6 +71,59 @@ public static class TypeUtility
             type is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false } &&
             targetType.IsAssignableFrom(type);
 
+    }
+
+    public static IEnumerable<TInterface> Instances<TInterface>(this IEnumerable<Type> types)
+    {
+        var targetType = typeof(TInterface);
+
+        foreach (var type in types)
+        {
+            if (IsConcreteImplementation(type))
+                yield return (TInterface)Activator.CreateInstance(type)!;
+        }
+
+        // Filter for concrete, non-generic, instantiable classes that implements the target interface
+        bool IsConcreteImplementation(Type type) =>
+            type is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false } &&
+            targetType.IsAssignableFrom(type);
+    }
+
+    public static IEnumerable<TInterface> GetInstancesOfTypesImplementing<TInterface>(ILogger? logger = null) where TInterface : class
+    {
+        var targetType = typeof(TInterface);
+
+        if (!targetType.IsInterface)
+            throw new ArgumentException($"The type '{targetType.FullName}' must be an interface.", nameof(TInterface));
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type[] types;
+
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                logger?.LogWarning(ex, "Could not load all types from assembly '{AssemblyName}'.", assembly.FullName);
+                types = ex.Types.Where(t => t is not null).Cast<Type>().ToArray();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Failed to load types from assembly '{AssemblyName}'.", assembly.FullName);
+                continue;
+            }
+
+            foreach (var type in types)
+            {
+                if (type is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false } &&
+                    targetType.IsAssignableFrom(type))
+                {
+                    yield return (TInterface)Activator.CreateInstance(type)!;
+                }
+            }
+        }
     }
 
 
