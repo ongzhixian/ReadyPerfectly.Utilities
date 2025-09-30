@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ReadyPerfectly.Utilities;
@@ -122,6 +123,45 @@ public static class TypeUtility
                 {
                     yield return (TInterface)Activator.CreateInstance(type)!;
                 }
+            }
+        }
+    }
+
+    public static IEnumerable<TInterface> GetInstancesOfTypesImplementing<TInterface>(IServiceProvider services, ILogger? logger = null)
+    {
+        var targetType = typeof(TInterface);
+        if (!targetType.IsInterface)
+            throw new ArgumentException($"The type '{targetType.FullName}' must be an interface.", nameof(TInterface));
+
+        using var scope = services.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic))
+        {
+            Type[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                logger?.LogWarning(ex, "Could not load all types from assembly '{AssemblyName}'.", assembly.FullName);
+                types = ex.Types.Where(t => t is not null).Cast<Type>().ToArray();
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Failed to load types from assembly '{AssemblyName}'.", assembly.FullName);
+                continue;
+            }
+
+            foreach (var type in types)
+            {
+                if (type.IsClass 
+                    && !type.IsAbstract 
+                    && !type.IsGenericTypeDefinition 
+                    && targetType.IsAssignableFrom(type) 
+                    && scopedProvider.GetService(type) is TInterface instance)
+                    yield return instance;
             }
         }
     }
